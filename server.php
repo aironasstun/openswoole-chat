@@ -28,7 +28,8 @@ $server->on("Start", function (Server $server) {
 
 $server->on('Open', function (Server $server, OpenSwoole\Http\Request $request) use ($fds) {
     $fd = $request->fd;
-    $clientName = sprintf("User-%'.02d", $request->fd);
+    $parameters = $request->get;
+    $clientName = $parameters['username'] ?? sprintf("User-%'.02d", $request->fd);
     $fds->set($request->fd, [
         'fd' => $fd,
         'name' => sprintf($clientName)
@@ -36,9 +37,15 @@ $server->on('Open', function (Server $server, OpenSwoole\Http\Request $request) 
     echo "Connection <{$fd}> open by {$clientName}. Total connections: " . $fds->count() . "\n";
     foreach ($fds as $key => $value) {
         if ($key == $fd) {
-            $server->push($request->fd, "Welcome {$clientName}, there are " . $fds->count() . " connections");
+            $message = formatMessage(
+                'Welcome ' . $clientName . ', there are ' . $fds->count() . ' connections',
+            );
+            $server->push($request->fd, $message);
         } else {
-            $server->push($key, "A new client ({$clientName}) is joining to the party");
+            $message = formatMessage(
+                'A new client (' . $clientName . ') is joining to the party',
+            );
+            $server->push($key, $message);
         }
     }
 });
@@ -47,11 +54,11 @@ $server->on('Message', function (Server $server, Frame $frame) use ($fds) {
     $sender = $fds->get(strval($frame->fd), "name");
     echo "Received from " . $sender . ", message: {$frame->data}" . PHP_EOL;
     foreach ($fds as $key => $value) {
-        if ($key == $frame->fd) {
-            $server->push($frame->fd, "ME: " . $frame->data);
-        } else {
-            $server->push($key, "{$sender}: " . $frame->data);
-        }
+        $message = formatMessage(
+            $frame->data,
+            $sender,
+        );
+        $server->push($key, $message);
     }
 });
 
@@ -66,3 +73,14 @@ $server->on('Disconnect', function (Server $server, int $fd) use ($fds) {
 });
 
 $server->start();
+
+function formatMessage(string $message, string $from = 'Server'): string
+{
+    $message = [
+        'message' => $message,
+        'from' => $from,
+        'time' => (new DateTimeImmutable())->format('Y-m-d H:i:s.u')
+    ];
+
+   return json_encode($message);
+}
